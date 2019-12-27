@@ -1,0 +1,307 @@
+
+
+/****************************************************************************************    
+**  This is example LINX firmware for use with the Arduino Mega 2560 with the serial 
+**  interface enabled.
+**
+**  For more information see:           www.labviewmakerhub.com/linx
+**  For support visit the forums at:    www.labviewmakerhub.com/forums/linx
+**  
+**  Written By Sam Kristoff // File is used for communication with Labview and modified to incorporate the custom command created **     to make the stepper motors to move.
+**
+**  BSD2 License.
+****************************************************************************************/    
+
+//Include All Peripheral Libraries Used By LINX
+#include <SPI.h>
+#include <Wire.h>
+#include <EEPROM.h>
+#include <Servo.h>
+//Include Device Sepcific Header From Sketch>>Import Library (In This Case LinxArduinoMega2560.h)
+//Also Include Desired LINX Listener From Sketch>>Import Library (In This Case LinxSerialListener.h)
+#include <LinxArduinoMega2560.h>
+#include <LinxSerialListener.h>
+//Custom Command for controlling a number of stepper motors. Currently hardcoded for the output pins.
+int StepperMotorCommand();
+const int DirPin1=2;
+const int StepPin1=3;
+const int DirPin2=6;
+const int StepPin2=7; 
+const int DirPin3=10;
+const int StepPin3=11;
+const int modulo=5;
+const int test;
+const int CurDelay=500;
+/////Initialize Encoder////////
+ #define outputA 12 //GREEN WIRE
+ #define outputB 13 //WHTIE WIRE 
+ int counter = 0; 
+ int aState;
+ int aLastState; 
+///////////////////////////////
+int PinUSDir=DirPin1;
+int PinUSStep=StepPin1;
+int PinS1Dir=DirPin2;
+int PinS1Step=StepPin2;
+int PinS2Dir=DirPin3;
+int PinS2Step=StepPin3;
+//Create A Pointer To The LINX Device Object We Instantiate In Setup()
+LinxArduinoMega2560* LinxDevice;
+
+//Initialize LINX Device And Listener
+void setup()
+{
+  //Linking stepper motor command to LINX
+  LinxSerialConnection.AttachCustomCommand(0,StepperMotorCommand);
+  //Instantiate The LINX Device
+  LinxDevice = new LinxArduinoMega2560();
+  
+  //The LINX Listener Is Pre Instantiated, Call Start And Pass A Pointer To The LINX Device And The UART Channel To Listen On
+  LinxSerialConnection.Start(LinxDevice, 0);
+
+//////////Used for Encoder///////////
+   pinMode (outputA,INPUT); //GREEN WIRE
+   pinMode (outputB,INPUT); //WHITE WIRE
+   
+   aLastState = digitalRead(outputA);   
+}
+////////////////////////////////////////////
+
+void loop()
+{
+  //Listen For New Packets From LabVIEW
+  LinxSerialConnection.CheckForCommands();
+  
+  //Your Code Here, But It will Slow Down The Connection With LabVIEW
+}
+int StepperMotorCommand(unsigned char numInputBytes, unsigned char* input, unsigned char* numResponseBytes, unsigned char* response)
+{
+ int StepPerRev=200;                    // Stepper motor Steps Per Revolution
+ long steps1=255*byte(input[0])+byte(input[1]);
+ long steps2=255*byte(input[2])+byte(input[3]);
+ long steps3=255*byte(input[4])+byte(input[5]);
+ long Dir1=input[6];
+ long Dir2=input[7];
+ long Dir3=input[8];
+ 
+long maxsteps;
+long absmaxsteps;
+long minsteps;
+long absminsteps;
+long midsteps; 
+
+ digitalWrite(DirPin1,HIGH);
+ digitalWrite(DirPin2,HIGH);
+ digitalWrite(DirPin3,HIGH);
+
+maxsteps = max(steps1, steps2);
+absmaxsteps = max(maxsteps,steps3);
+
+minsteps = min(steps1,steps2);
+absminsteps = min(minsteps, steps3);
+
+///////////////////Control of Direction using Boolean Switch////////////////////
+if (Dir1==1){
+  digitalWrite(DirPin1,HIGH);
+}
+  else{
+  digitalWrite(DirPin1,LOW);
+  }
+if (Dir2==1){
+  digitalWrite(DirPin2,HIGH);
+}
+else{
+  digitalWrite(DirPin2,LOW);
+}
+if (Dir3==1){
+  digitalWrite(DirPin3,HIGH);
+}
+else{
+digitalWrite(DirPin3,LOW);
+}
+////////////////////////////////////////////////////////////////////////////////
+
+if (absmaxsteps==steps1){
+    PinUSDir=DirPin1;
+    PinUSStep=StepPin1;
+    
+  if (absminsteps==steps3){
+    PinS1Dir=DirPin2;
+    PinS1Step=StepPin2;
+    PinS2Dir=DirPin3;
+    PinS2Step=StepPin3;
+    midsteps=steps2;
+      
+  }
+  else{
+    PinS1Dir=DirPin3;
+    PinS1Step=StepPin3;
+    PinS2Dir=DirPin2;
+    PinS2Step=StepPin2;
+    midsteps=steps3;
+  }
+}
+else if(absmaxsteps==steps2){
+  PinUSDir=DirPin2;
+  PinUSStep=StepPin2;
+  if (absminsteps==steps3){
+    PinS1Dir=DirPin1;
+    PinS1Step=StepPin1;
+    PinS2Dir=DirPin3;
+    PinS2Step=StepPin3;
+    midsteps=steps1;
+  }
+  else{
+    PinS1Dir=DirPin3;
+    PinS1Step=StepPin3;
+    PinS2Dir=DirPin1;
+    PinS2Step=StepPin1;
+    midsteps=steps3;
+  }
+}
+else {
+ 
+  PinUSDir=DirPin3;
+  PinUSStep=StepPin3;
+  if (absminsteps==steps2){
+    PinS1Dir=DirPin1;
+    PinS1Step=StepPin1;
+    PinS2Dir=DirPin2;
+    PinS2Step=StepPin2;
+    midsteps=steps1;
+  }
+  else {
+    PinS1Dir=DirPin2;
+    PinS1Step=StepPin2;
+    PinS2Dir=DirPin1;
+    PinS2Step=StepPin1;
+    midsteps=steps2;
+    
+  }
+}
+long ignore=absmaxsteps+1;
+long USComIter[]={ignore,ignore,ignore,ignore,ignore};
+long US1Iter[modulo];
+long US1IterRem[modulo];
+long US2Iter[modulo];
+long US2IterRem[modulo];
+
+if (midsteps==0){
+  for(int i=0;i<modulo;i++){
+    US1Iter[i]=ignore;
+  }
+}
+else{
+US1Iter[0]=absmaxsteps/midsteps;
+US1IterRem[0]=absmaxsteps%midsteps;
+for (int i=1; i<modulo;i++){
+  if (US1IterRem[i-1]!=0){
+    US1Iter[i]=absmaxsteps/US1IterRem[i-1];
+    US1IterRem[i]=absmaxsteps%US1IterRem[i-1];
+    }
+  
+  else{    
+    US1Iter[i]=ignore;
+    US1IterRem[i]=0;    
+  }
+}
+}
+if (absminsteps==0){
+ 
+  for(int i=0;i<modulo;i++){
+    US2Iter[i]=ignore;
+  }
+}
+else{
+ 
+US2Iter[0]=absmaxsteps/absminsteps;
+US2IterRem[0]=absmaxsteps%absminsteps;
+for (int i=0; i<modulo; i++){
+  if (US2Iter[0]==US1Iter[i]){
+        USComIter[0]=US2Iter[0];
+        US2Iter[0]=ignore;
+        US1Iter[i]=ignore;
+        break;
+      }
+}
+
+for (int i=1; i<modulo;i++){
+  if (US2IterRem[i-1]!=0){
+    US2Iter[i]=absmaxsteps/US2IterRem[i-1];
+    US2IterRem[i]=absmaxsteps%US2IterRem[i-1];
+    for (int j=0;j<modulo;j++){
+      if (US2Iter[i]==US1Iter[j]){
+        USComIter[i]=US2Iter[i];
+        US2Iter[i]=ignore;
+        US1Iter[j]=ignore;
+        break;
+            }
+    }
+  }
+  else{ 
+    US2Iter[i]=ignore;
+    US2IterRem[i]=0;
+  }
+}
+}
+  for (int i = 0; i<(absmaxsteps); i++)
+  {
+    //all actuators step
+    if(i%USComIter[0]==0||i%USComIter[1]==0||i%USComIter[2]==0||i%USComIter[3]==0||i%USComIter[4]==0){
+      digitalWrite(PinUSStep,HIGH);
+      digitalWrite(PinS1Step,HIGH);
+      digitalWrite(PinS2Step,HIGH);   
+       
+      delayMicroseconds(CurDelay);
+
+      digitalWrite(PinUSStep,LOW);
+      digitalWrite(PinS1Step,LOW);
+      digitalWrite(PinS2Step,LOW);
+
+      delayMicroseconds(CurDelay);
+    }
+    //actuator absmaxstep and midstep step
+    else if (i%US1Iter[0]==0||i%US1Iter[1]==0||i%US1Iter[2]==0||i%US1Iter[3]==0||i%US1Iter[4]==0){
+      digitalWrite(PinUSStep,HIGH);
+      digitalWrite(PinS1Step,HIGH);
+
+      delayMicroseconds(CurDelay);
+
+      digitalWrite(PinUSStep,LOW);
+      digitalWrite(PinS1Step,LOW);
+
+      delayMicroseconds(CurDelay);
+    }
+    //actuator absmaxstep and absminstep step
+    else if (i%US2Iter[0]==0||i%US2Iter[1]==0||i%US2Iter[2]==0||i%US2Iter[3]==0||i%US2Iter[4]==0){
+      digitalWrite(PinUSStep,HIGH);
+      digitalWrite(PinS2Step,HIGH);
+
+      delayMicroseconds(CurDelay);
+
+      digitalWrite(PinUSStep,LOW);
+      digitalWrite(PinS2Step,LOW);
+
+      delayMicroseconds(CurDelay);
+    }
+    //actuator absmaxstep step
+    else{
+      digitalWrite(PinUSStep,HIGH);
+
+      delayMicroseconds(CurDelay);
+
+      digitalWrite(PinUSStep,LOW);
+
+      delayMicroseconds(CurDelay);
+ }
+}
+   *numResponseBytes=5*3;
+response[0]=floor(absmaxsteps/255);
+response[1]=absmaxsteps%255;
+response[2]=floor(midsteps/255);
+response[3]=midsteps%255;
+response[4]=floor(absminsteps/255);
+response[5]=absminsteps%255;
+ return 0;
+}
+
